@@ -42,8 +42,9 @@
                 @endif
             </div>
             <div class="min-w-0">
-                <span class="inline-block px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest mb-2" style="background:{{ $loan->book->category->color }}15; color:{{ $loan->book->category->color }}">
-                    {{ $loan->book->category->name }}
+                <span class="text-[9px] opacity-70 font-bold italic lowercase tracking-normal">
+                    Batas Kembali: 
+                    {{ $userLoan->due_date ? $userLoan->due_date->format('d M Y') : '-' }}
                 </span>
                 <h3 class="text-xl font-black text-slate-800 dark:text-white truncate leading-tight mb-1">{{ $loan->book->title }}</h3>
                 <p class="text-slate-500 dark:text-gray-400 font-bold italic text-sm">{{ $loan->book->author }}</p>

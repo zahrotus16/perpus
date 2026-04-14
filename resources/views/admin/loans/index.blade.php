@@ -1,231 +1,215 @@
 @extends('layouts.app')
-@section('title', request()->routeIs('admin.loans.returns') ? 'Pengembalian' : 'Peminjaman')
-@section('page-title', auth()->user()->role === 'admin' ? 'Laporan Riwayat Sirkulasi' : (request()->routeIs('admin.loans.returns') ? 'Pengembalian' : 'Manajemen Peminjaman'))
-@section('page-subtitle', auth()->user()->role === 'admin' ? 'Monitoring sirkulasi buku perpustakaan' : 'Pantau dan kelola sirkulasi buku perpustakaan')
+
+@section('title', 'Data Peminjaman')
 
 @section('content')
-<div class="space-y-6">
-    {{-- Top Header Section --}}
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-            <h2 class="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">
-                @if(auth()->user()->role === 'admin')
-                Laporan Transaksi Perpustakaan
-                @else
-                {{ request()->routeIs('admin.loans.returns') ? 'Log Sirkulasi Selesai' : 'Log Sirkulasi Aktif' }}
-                @endif
-            </h2>
-        </div>
-    </div>
 
-    {{-- Search Module --}}
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-        <form action="{{ request()->url() }}" method="GET" class="flex flex-col md:flex-row gap-4 items-center">
-            <div class="relative w-full md:flex-1">
-                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                    <i class="fas fa-search text-xs"></i>
-                </div>
-                <input type="text" name="search" value="{{ request('search') }}"
-                    placeholder="{{ request()->routeIs('admin.loans.returns') ? 'Cari data pengembalian...' : 'Cari nama anggota atau judul buku...' }}"
-                    class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 placeholder-slate-400 focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all outline-none">
-            </div>
-            <button type="submit" class="w-full md:w-auto px-10 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition shadow-lg shadow-emerald-900/20 active:scale-95">
-                Cari Transaksi
+@if(session('success'))
+    <div class="alert alert-dismissible fade show d-flex align-items-center gap-2" 
+         role="alert"
+         style="background:#EAF3DE; border:0.5px solid #C0DD97; color:#3B6D11; border-radius:8px; font-size:13px;">
+        <i class="fas fa-check-circle"></i>
+        <span>{{ session('success') }}</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" style="font-size:11px;"></button>
+    </div>
+@endif
+
+@if(session('error'))
+    <div class="alert alert-dismissible fade show d-flex align-items-center gap-2" 
+         role="alert"
+         style="background:#FCEBEB; border:0.5px solid #F09595; color:#A32D2D; border-radius:8px; font-size:13px;">
+        <i class="fas fa-circle-exclamation"></i>
+        <span>{{ session('error') }}</span>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" style="font-size:11px;"></button>
+    </div>
+@endif
+
+{{-- Page Header --}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h5 class="mb-0 fw-500" style="font-size:18px;">Data Peminjaman</h5>
+        <p class="mb-0 text-muted" style="font-size:13px;">Kelola seluruh transaksi peminjaman buku</p>
+    </div>
+</div>
+
+<div class="card" style="border:0.5px solid #e0e0e0; border-radius:12px;">
+
+    {{-- Search Bar --}}
+    <div class="card-header bg-white border-0" style="border-bottom:0.5px solid #e0e0e0 !important; border-radius:12px 12px 0 0; padding:1rem 1.25rem;">
+        <form method="GET" class="d-flex gap-2">
+            <input type="text" name="search"
+                   class="form-control"
+                   style="font-size:13px; border:0.5px solid #ccc; border-radius:8px;"
+                   placeholder="Cari nama user atau judul buku..."
+                   value="{{ request('search') }}">
+            <button type="submit"
+                    class="btn btn-outline-secondary d-flex align-items-center gap-1"
+                    style="font-size:13px; border-radius:8px; white-space:nowrap;">
+                <i class="fas fa-search" style="font-size:11px;"></i> Cari
             </button>
+            @if(request('search'))
+                <a href="{{ route('admin.loans.index') }}"
+                   class="btn d-flex align-items-center gap-1"
+                   style="font-size:13px; border-radius:8px; background:#FCEBEB; color:#A32D2D; border:0.5px solid #F09595; white-space:nowrap;">
+                    <i class="fas fa-times" style="font-size:11px;"></i> Reset
+                </a>
+            @endif
         </form>
     </div>
 
-    {{-- Transaction Table Card --}}
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="w-full text-left">
-                <thead class="bg-slate-50/50 text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] border-b border-slate-100">
-                    <tr>
-                        <th class="px-8 py-5">Anggota</th>
-                        <th class="px-4 py-5">Buku Dipinjam</th>
-                        <th class="px-4 py-5 text-center">Tgl Pinjam</th>
-                        <th class="px-4 py-5 text-center">Batas Kembali</th>
-                        <th class="px-8 py-5 text-right">Aksi</th>
+    {{-- Table --}}
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" style="min-width:680px;">
+                <thead>
+                    <tr style="background:#f8f8f6;">
+                        <th style="width:120px; font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:#888; padding:10px 14px; border-bottom:0.5px solid #e0e0e0;">Kode</th>
+                        <th style="font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:#888; padding:10px 14px; border-bottom:0.5px solid #e0e0e0;">User</th>
+                        <th style="font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:#888; padding:10px 14px; border-bottom:0.5px solid #e0e0e0;">Buku</th>
+                        <th style="font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:#888; padding:10px 14px; border-bottom:0.5px solid #e0e0e0;">Tgl Pinjam</th>
+                        <th style="font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:#888; padding:10px 14px; border-bottom:0.5px solid #e0e0e0;">Tgl Kembali</th>
+                        <th style="font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:#888; padding:10px 14px; border-bottom:0.5px solid #e0e0e0;">Status</th>
+                        <th style="width:150px; font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.06em; color:#888; padding:10px 14px; border-bottom:0.5px solid #e0e0e0;">Aksi</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-50 font-medium whitespace-nowrap">
+                <tbody>
                     @forelse($loans as $loan)
-                    <tr class="hover:bg-slate-50/50 transition-colors group">
-                        <td class="px-8 py-4">
-                            <div class="flex items-center gap-3">
-                                <div class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200 overflow-hidden shrink-0">
-                                    @if($loan->user->avatar)
-                                    <img src="{{ asset('storage/' . $loan->user->avatar) }}" alt="" class="w-full h-full object-cover">
-                                    @else
-                                    <span class="text-xs font-bold">{{ strtoupper(substr($loan->user->name, 0, 1)) }}</span>
+                        <tr>
+                            {{-- Kode --}}
+                            <td style="padding:12px 14px; font-size:13px; border-bottom:0.5px solid #f0f0f0; vertical-align:middle;">
+                                <span style="font-size:11px; font-weight:500; padding:3px 8px; border-radius:6px; background:#E6F1FB; color:#0C447C; font-family:monospace;">
+                                    {{ $loan->kode_peminjaman }}
+                                </span>
+                            </td>
+
+                            {{-- User --}}
+                            <td style="padding:12px 14px; font-size:13px; border-bottom:0.5px solid #f0f0f0; vertical-align:middle;">
+                                <div style="font-size:13px; font-weight:500; margin:0;">{{ $loan->user->name ?? '-' }}</div>
+                                <div style="font-size:11px; color:#888; margin:0;">{{ $loan->user->email ?? '-' }}</div>
+                            </td>
+
+                            {{-- Buku --}}
+                            <td style="padding:12px 14px; font-size:13px; border-bottom:0.5px solid #f0f0f0; vertical-align:middle;">
+                                <div style="font-size:13px; font-weight:500; margin:0;">
+                                    {{ Illuminate\Support\Str::limit($loan->book->title ?? '-', 40) }}
+                                </div>
+                                <div style="font-size:11px; color:#888;">Stok: {{ $loan->book->stock ?? 0 }}</div>
+                            </td>
+
+                            {{-- Tgl Pinjam --}}
+                            <td style="padding:12px 14px; font-size:13px; border-bottom:0.5px solid #f0f0f0; vertical-align:middle;">
+                                {{ $loan->tgl_pinjam ? \Carbon\Carbon::parse($loan->tgl_pinjam)->format('d/m/Y') : '-' }}
+                            </td>
+
+                            {{-- Tgl Kembali --}}
+                            <td style="padding:12px 14px; border-bottom:0.5px solid #f0f0f0; vertical-align:middle;">
+                                @if($loan->tgl_kembali)
+                                    <span style="font-size:12px; padding:3px 8px; border-radius:6px;
+                                        {{ $loan->isOverdue() ? 'background:#FCEBEB; color:#A32D2D;' : 'background:#E1F5EE; color:#0F6E56;' }}">
+                                        {{ \Carbon\Carbon::parse($loan->tgl_kembali)->format('d/m/Y') }}
+                                    </span>
+                                @else
+                                    <span style="color:#aaa;">-</span>
+                                @endif
+                            </td>
+
+                            {{-- Status --}}
+                            <td style="padding:12px 14px; border-bottom:0.5px solid #f0f0f0; vertical-align:middle;">
+                                @switch($loan->status)
+                                    @case('pending')
+                                        <span style="font-size:11px; font-weight:500; padding:3px 10px; border-radius:20px; background:#FAEEDA; color:#854F0B;">Pending</span>
+                                        @break
+                                    @case('dipinjam')
+                                        <span style="font-size:11px; font-weight:500; padding:3px 10px; border-radius:20px; background:#EAF3DE; color:#3B6D11;">Dipinjam</span>
+                                        @break
+                                    @case('terlambat')
+                                        <span style="font-size:11px; font-weight:500; padding:3px 10px; border-radius:20px; background:#FCEBEB; color:#A32D2D;">Terlambat</span>
+                                        @break
+                                    @case('dikembalikan')
+                                        <span style="font-size:11px; font-weight:500; padding:3px 10px; border-radius:20px; background:#F1EFE8; color:#5F5E5A;">Dikembalikan</span>
+                                        @break
+                                    @default
+                                        <span style="font-size:11px; font-weight:500; padding:3px 10px; border-radius:20px; background:#F1EFE8; color:#5F5E5A;">{{ ucfirst($loan->status) }}</span>
+                                @endswitch
+                            </td>
+
+                            {{-- Aksi --}}
+                            <td style="padding:12px 14px; border-bottom:0.5px solid #f0f0f0; vertical-align:middle;">
+                                <div class="d-flex gap-1">
+                                    {{-- Detail --}}
+                                    <a href="{{ route('admin.loans.show', $loan) }}"
+                                       class="btn btn-sm d-flex align-items-center"
+                                       style="border:0.5px solid #ccc; border-radius:6px; padding:4px 8px; font-size:12px; color:#555; background:#fff;"
+                                       title="Detail">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+
+                                    {{-- Konfirmasi --}}
+                                    @if($loan->status === 'pending')
+                                        <form action="{{ route('admin.loans.confirm', $loan) }}" method="POST" class="d-inline">
+                                            @csrf @method('PATCH')
+                                            <button type="submit"
+                                                    onclick="return confirm('Konfirmasi peminjaman ini?')"
+                                                    title="Konfirmasi"
+                                                    style="border:0.5px solid #C0DD97; border-radius:6px; padding:4px 8px; font-size:12px; background:#EAF3DE; color:#3B6D11; cursor:pointer;">
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                        </form>
+                                    @endif
+
+                                    {{-- Kembalikan --}}
+                                    @if(in_array($loan->status, ['dipinjam', 'terlambat']))
+                                        <form action="{{ route('admin.loans.return', $loan) }}" method="POST" class="d-inline">
+                                            @csrf @method('PATCH')
+                                            <button type="submit"
+                                                    onclick="return confirm('Proses pengembalian buku ini?')"
+                                                    title="Kembalikan"
+                                                    style="border:0.5px solid #B5D4F4; border-radius:6px; padding:4px 8px; font-size:12px; background:#E6F1FB; color:#185FA5; cursor:pointer;">
+                                                <i class="fas fa-undo"></i>
+                                            </button>
+                                        </form>
+                                    @endif
+
+                                    {{-- Hapus --}}
+                                    @if(!in_array($loan->status, ['dipinjam', 'terlambat', 'dikembalikan']))
+                                        <form action="{{ route('admin.loans.destroy', $loan) }}" method="POST" class="d-inline">
+                                            @csrf @method('DELETE')
+                                            <button type="submit"
+                                                    onclick="return confirm('Yakin ingin menghapus data ini?')"
+                                                    title="Hapus"
+                                                    style="border:0.5px solid #F09595; border-radius:6px; padding:4px 8px; font-size:12px; background:#FCEBEB; color:#A32D2D; cursor:pointer;">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
                                     @endif
                                 </div>
-                                <div>
-                                    <span class="text-sm font-bold text-slate-800 block leading-none">{{ $loan->user->name }}</span>
-                                    <span class="text-[9px] text-slate-400 font-bold uppercase mt-1 block tracking-wider">{{ $loan->user->member_id }}</span>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="px-4 py-4">
-                            <div class="max-w-[200px]">
-                                <span class="text-sm text-slate-800 block leading-tight truncate font-bold">{{ $loan->book->title }}</span>
-                                <span class="text-[10px] text-slate-400 font-bold uppercase mt-1 block">{{ $loan->book->author }}</span>
-                            </div>
-                        </td>
-                        <td class="px-4 py-4 text-center">
-                            <span class="text-xs text-slate-600 font-mono">{{ $loan->tgl_pinjam ? $loan->tgl_pinjam->format('d/m/Y') : '-' }}</span>
-                        </td>
-                        <td class="px-4 py-4 text-center">
-                            <span class="text-xs {{ $loan->tgl_kembali && $loan->tgl_kembali->isPast() && $loan->status !== 'dikembalikan' ? 'text-red-500 font-black' : 'text-slate-600' }} font-mono">
-                                {{ $loan->tgl_kembali ? $loan->tgl_kembali->format('d/m/Y') : '-' }}
-                            </span>
-                        </td>
-                        <td class="px-8 py-4">
-                            <div class="flex items-center justify-end gap-2">
-                                @if(auth()->user()->role === 'admin')
-                                <a href="{{ route('admin.loans.show', $loan) }}" class="w-8 h-8 flex items-center justify-center rounded-lg text-[#00bcd4] hover:bg-[#00bcd4]/10 transition-all duration-200">
-                                    <i class="fas fa-eye text-xs"></i>
-                                </a>
-                                @else
-                                @if($loan->status === 'pending')
-                                <form action="{{ route('admin.loans.confirm', $loan) }}" method="POST" class="inline">
-                                    @csrf @method('PATCH')
-                                    <button type="submit" class="px-4 py-1.5 bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition shadow-sm hover:shadow-blue-900/10 active:scale-95">
-                                        Konfirmasi
-                                    </button>
-                                </form>
-                                @elseif($loan->status !== 'dikembalikan')
-                                @if(auth()->user()->role === 'petugas')
-                                <form action="{{ route('admin.loans.return', $loan) }}" method="POST" class="inline">
-                                    @csrf @method('PATCH')
-                                    <button type="submit" class="px-4 py-1.5 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition shadow-sm hover:shadow-emerald-900/10 active:scale-95">
-                                        Kembalikan
-                                    </button>
-                                </form>
-                                @endif
-                                @else
-                                <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-200 text-[9px] font-black uppercase tracking-tighter">
-                                    <span class="w-1 h-1 rounded-full bg-slate-500"></span>
-                                    Selesai
-                                </span>
-                                @endif
-
-                                <button type="button"
-                                    data-url="{{ route('admin.loans.destroy', $loan->id) }}"
-                                    onclick="openDeleteModal(this.dataset.url)"
-                                    class="w-8 h-8 flex items-center justify-center rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-all duration-200 text-xs">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                                @endif
-                            </div>
-                        </td>
-                    </tr>
+                            </td>
+                        </tr>
                     @empty
-                    <tr>
-                        <td colspan="5" class="px-8 py-20 text-center text-slate-400 font-bold italic">Data peminjaman tidak ditemukan...</td>
-                    </tr>
+                        <tr>
+                            <td colspan="7" class="text-center py-5" style="color:#aaa;">
+                                <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                                <span style="font-size:13px;">Belum ada data peminjaman</span>
+                            </td>
+                        </tr>
                     @endforelse
                 </tbody>
             </table>
         </div>
-
-        {{-- Pagination footer --}}
-        @if($loans->hasPages())
-        <div class="px-8 py-6 border-t border-slate-50 bg-slate-50/30">
-            {{ $loans->links() }}
-        </div>
-        @endif
     </div>
-</div>
 
-{{-- Return Success Modal --}}
-@if(session('success_loan'))
-<div id="successModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6 transition-all duration-300">
-    <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="this.parentElement.remove()"></div>
-
-    <div class="relative z-10 w-full max-w-md bg-white rounded-2xl p-8 text-center shadow-2xl border border-slate-100 transform transition-all duration-300 scale-100 animate-in fade-in zoom-in duration-300">
-        <div class="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500">
-            <i class="fas fa-check-circle text-4xl"></i>
-        </div>
-
-        <h2 class="text-2xl font-black text-slate-900 tracking-tight mb-2">Berhasil Dikembalikan</h2>
-        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 leading-relaxed">Rincian transaksi pengembalian koleksi</p>
-
-        <div class="bg-slate-50 rounded-2xl p-5 mb-8 space-y-4 text-left border border-slate-100">
-            <div class="flex justify-between items-start gap-4 pb-3 border-b border-slate-200/50">
-                <span class="text-[10px] font-black text-slate-400 uppercase">Judul Buku</span>
-                <span class="text-xs font-bold text-slate-800 text-right">{{ session('success_loan')->book->title }}</span>
+    {{-- Footer: Pagination + Info --}}
+    <div class="card-footer bg-white border-0" style="border-top:0.5px solid #e0e0e0 !important; border-radius:0 0 12px 12px; padding:.75rem 1.25rem;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <p class="mb-0" style="font-size:12px; color:#888;">
+                Menampilkan {{ $loans->firstItem() ?? 0 }} &ndash; {{ $loans->lastItem() ?? 0 }}
+                dari {{ $loans->total() }} data
+            </p>
+            <div>
+                {{ $loans->appends(request()->query())->links() }}
             </div>
-            <div class="flex justify-between items-center gap-4 pb-3 border-b border-slate-200/50">
-                <span class="text-[10px] font-black text-slate-400 uppercase">Peminjam</span>
-                <span class="text-xs font-bold text-slate-800">{{ session('success_loan')->user->name }}</span>
-            </div>
-            <div class="flex justify-between items-center gap-4">
-                <span class="text-[10px] font-black text-slate-400 uppercase">Status</span>
-                @php $isLate = (session('success_loan')->pengembalian->denda ?? 0) > 0; @endphp
-                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg {{ $isLate ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700' }} text-[9px] font-black uppercase tracking-tighter">
-                    {{ $isLate ? 'Terlambat' : 'Tepat Waktu' }}
-                </span>
-            </div>
-            <div class="flex justify-between items-center gap-4 pt-3 border-t border-slate-200/50">
-                <span class="text-[10px] font-black text-slate-400 uppercase">Denda</span>
-                <span class="text-sm font-black text-emerald-600">Rp {{ number_format(session('success_loan')->pengembalian->denda ?? 0, 0, ',', '.') }}</span>
-            </div>
-        </div>
-
-        <button onclick="this.closest('#successModal').remove()"
-            class="w-full px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-emerald-900/20">
-            Selesai
-        </button>
-    </div>
-</div>
-@endif
-{{-- Custom Delete Modal --}}
-<div id="deleteModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-6">
-    <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-300" onclick="closeDeleteModal()"></div>
-
-    <div class="relative z-10 w-full max-w-md bg-white rounded-2xl p-8 text-center shadow-2xl border border-slate-100 transform transition-all duration-300 scale-100">
-        <div class="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500">
-            <i class="fas fa-history text-3xl"></i>
-        </div>
-
-        <h2 class="text-2xl font-black text-slate-900 tracking-tight mb-2">Hapus Transaksi?</h2>
-        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-10 leading-relaxed">
-            Data peminjaman ini akan dihapus dari sistem secara permanen. <br>Lanjutkan penghapusan?
-        </p>
-
-        <div class="flex items-center gap-4">
-            <button onclick="closeDeleteModal()"
-                class="flex-1 px-6 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm">
-                Batal
-            </button>
-            <form id="deleteForm" method="POST" class="flex-1">
-                @csrf
-                @method('DELETE')
-                <button type="submit"
-                    class="w-full px-6 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-red-900/20">
-                    Ya, Hapus
-                </button>
-            </form>
         </div>
     </div>
+
 </div>
-
-@push('scripts')
-<script>
-    function openDeleteModal(actionUrl) {
-        const modal = document.getElementById('deleteModal');
-        const form = document.getElementById('deleteForm');
-        form.action = actionUrl;
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-    }
-
-    function closeDeleteModal() {
-        const modal = document.getElementById('deleteModal');
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
-</script>
-@endpush
 @endsection

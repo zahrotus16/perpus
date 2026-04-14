@@ -3,38 +3,35 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{Book, Peminjaman, User};
+use App\Models\{Book, Peminjaman};
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PeminjamanController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Peminjaman::with(['user', 'book']);
-
-        if ($request->search) {
-            $query->where(function ($q) use ($request) {
-                $q->where('kode_peminjaman', 'like', "%{$request->search}%")
-                  ->orWhereHas('user', fn($u) => $u->where('name', 'like', "%{$request->search}%"))
-                  ->orWhereHas('book', fn($b) => $b->where('title', 'like', "%{$request->search}%"));
-            });
-        }
-
-        if ($request->status) {
-            $query->where('status', $request->status);
-        }
-
-        // Auto-update overdue status
+        // auto update terlambat
         Peminjaman::where('status', 'dipinjam')
             ->where('tgl_kembali', '<', Carbon::today())
             ->update(['status' => 'terlambat']);
 
-        $loans = $query->latest()->paginate(15)->withQueryString();
-        $books = Book::where('status', 'available')->where('stock', '>', 0)->orderBy('title')->get();
-        $users = User::where('role', 'anggota')->where('status', 'active')->orderBy('name')->get();
+        $query = Peminjaman::with(['user', 'book']);
 
-        return view('admin.loans.index', compact('loans', 'books', 'users'));
+        // search
+        if ($request->search) {
+            $query->where(function ($q) use ($request) {
+                $q->whereHas('user', fn($u) =>
+                    $u->where('name', 'like', "%{$request->search}%"))
+                ->orWhereHas('book', fn($b) =>
+                    $b->where('title', 'like', "%{$request->search}%"));
+            });
+        }
+
+        $loans = $query->latest()->paginate(15)->withQueryString();
+
+        return view('admin.loans.index', compact('loans'));
     }
 
     public function store(Request $request)
@@ -44,60 +41,124 @@ class PeminjamanController extends Controller
             'book_id'     => 'required|exists:books,id',
             'tgl_pinjam'  => 'required|date',
             'tgl_kembali' => 'required|date|after:tgl_pinjam',
-            'catatan'     => 'nullable|string|max:500',
         ]);
 
-        $book = Book::findOrFail($request->book_id);
+        try {
+            DB::transaction(function () use ($request) {
+                // Cek ketersediaan stock sebelum create
+                $book = Book::lockForUpdate()->findOrFail($request->book_id);
+                
+                if (!$book->isAvailable()) {
+                    throw new \Exception('Stok buku tidak mencukupi!');
+                }
 
-        if (!$book->isAvailable()) {
-            return back()->with('error', 'Buku tidak tersedia untuk dipinjam!');
+                // generate kode peminjaman
+                $lastKode = Peminjaman::orderBy('id', 'desc')->value('kode_peminjaman');
+                $number = $lastKode ? (int) substr($lastKode, -4) + 1 : 1;
+                $kode = 'PMJ-' . str_pad($number, 4, '0', STR_PAD_LEFT);
+
+                Peminjaman::create([
+                    'kode_peminjaman' => $kode,
+                    'user_id'         => $request->user_id,
+                    'book_id'         => $request->book_id,
+                    'tgl_pinjam'      => $request->tgl_pinjam,
+                    'tgl_kembali'     => $request->tgl_kembali,
+                    'status'          => 'pending',
+                ]);
+            });
+
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
         }
 
-        // Check if user already borrows this book
-        $existing = Peminjaman::where('user_id', $request->user_id)
-            ->where('book_id', $request->book_id)
-            ->whereIn('status', ['dipinjam', 'terlambat'])
-            ->exists();
-
-        if ($existing) {
-            return back()->with('error', 'Anggota ini sudah meminjam buku tersebut!');
-        }
-
-        Peminjaman::create($request->only('user_id', 'book_id', 'tgl_pinjam', 'tgl_kembali', 'catatan') + ['status' => 'dipinjam']);
-
-        $book->decrement('stock');
-
-        return redirect()->route('admin.loans.index')->with('success', 'Peminjaman berhasil dicatat!');
+        return back()->with('success', 'Peminjaman dibuat (pending)');
     }
-
 
     public function confirm(Peminjaman $loan)
     {
         if ($loan->status !== 'pending') {
-            return back()->with('error', 'Status peminjaman ini tidak pending.');
+            return back()->with('error', 'Status harus pending!');
         }
 
-        $loan->update([
-            'status'     => 'dipinjam',
-            'tgl_pinjam' => Carbon::now(),
-            'tgl_kembali' => Carbon::now()->addDays(7), // Default 7 days from confirmation
-        ]);
+        try {
+            DB::transaction(function () use ($loan) {
+                // Lock book untuk prevent race condition
+                $book = Book::lockForUpdate()->findOrFail($loan->book_id);
 
-        return back()->with('success', 'Peminjaman berhasil dikonfirmasi! Status berubah menjadi sedang dipinjam.');
+                // Double check ketersediaan stock
+                if (!$book->isAvailable()) {
+                    throw new \Exception('Stok buku habis!');
+                }
+
+                // Update status peminjaman DAN kurangi stock bersamaan
+                $loan->update([
+                    'status'      => 'dipinjam',
+                    'tgl_pinjam'  => now(),
+                    'tgl_kembali' => now()->addDays(7),
+                ]);
+
+                // Kurangi stock setelah status confirmed
+                $book->decrement('stock');
+                
+                // Update available stock jika ada field tersebut
+                if ($book->getAttribute('stock_available') !== null) {
+                    $book->decrement('stock_available');
+                }
+            });
+
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success', 'Peminjaman dikonfirmasi dan stock berkurang');
+    }
+
+    public function return(Peminjaman $loan)
+    {
+        if (!in_array($loan->status, ['dipinjam', 'terlambat'])) {
+            return back()->with('error', 'Status harus dipinjam atau terlambat!');
+        }
+
+        try {
+            DB::transaction(function () use ($loan) {
+                // Update status pengembalian
+                $loan->update([
+                    'status' => 'dikembalikan',
+                    'tgl_dikembalikan' => now()
+                ]);
+
+                // Tambah kembali stock
+                $loan->book->increment('stock');
+                
+                // Update available stock jika ada field tersebut
+                if ($loan->book->getAttribute('stock_available') !== null) {
+                    $loan->book->increment('stock_available');
+                }
+
+                $loan->load(['book', 'user', 'pengembalian']);
+            });
+
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return back()->with('success_loan', $loan);
     }
 
     public function show(Peminjaman $loan)
     {
-        $loan->load(['user', 'book.category', 'pengembalian']);
+        $loan->load(['user', 'book', 'pengembalian']);
         return view('admin.loans.show', compact('loan'));
     }
 
     public function destroy(Peminjaman $loan)
     {
-        if ($loan->status === 'dipinjam' || $loan->status === 'terlambat') {
-            return back()->with('error', 'Tidak dapat menghapus peminjaman yang masih aktif!');
+        if (in_array($loan->status, ['dipinjam', 'terlambat', 'dikembalikan'])) {
+            return back()->with('error', 'Tidak bisa hapus data aktif atau sudah dikembalikan!');
         }
+
         $loan->delete();
-        return back()->with('success', 'Data peminjaman berhasil dihapus!');
+
+        return back()->with('success', 'Data berhasil dihapus');
     }
 }
