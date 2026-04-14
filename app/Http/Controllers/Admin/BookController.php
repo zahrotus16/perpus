@@ -17,8 +17,8 @@ class BookController extends Controller
         if ($request->search) {
             $query->where(function ($q) use ($request) {
                 $q->where('title', 'like', "%{$request->search}%")
-                  ->orWhere('author', 'like', "%{$request->search}%")
-                  ->orWhere('isbn', 'like', "%{$request->search}%");
+                    ->orWhere('author', 'like', "%{$request->search}%")
+                    ->orWhere('isbn', 'like', "%{$request->search}%");
             });
         }
 
@@ -44,6 +44,7 @@ class BookController extends Controller
 
     public function store(Request $request)
     {
+        // dd($request->all());
         $validated = $request->validate([
             'title'       => 'required|string|max:255',
             'author'      => 'required|string|max:255',
@@ -60,8 +61,11 @@ class BookController extends Controller
             'pdf_file'    => 'nullable|mimes:pdf|max:51200',
         ]);
 
+        // dd('sebelum upload');
         if ($request->hasFile('cover')) {
-            $validated['cover'] = $request->file('cover')->store('covers', 'public');
+            $file = $request->file('cover');
+            $path = $file->store('books', 'public'); // simpan ke storage/app/public/covers
+            $validated['cover'] = $path;
         }
 
         if ($request->hasFile('pdf_file')) {
@@ -71,6 +75,7 @@ class BookController extends Controller
         $validated['total_stock'] = $validated['stock'];
 
         Book::create($validated);
+
 
         return redirect()->route('admin.books.index')->with('success', 'Buku berhasil ditambahkan!');
     }
