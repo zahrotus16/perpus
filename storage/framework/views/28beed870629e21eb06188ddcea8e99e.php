@@ -62,8 +62,6 @@
                                 </div>
                                 <div class="max-w-[240px]">
                                     <span class="text-sm font-bold text-slate-800 block leading-tight truncate"><?php echo e($book->title); ?></span>
-                                    <?php echo e($book->cover); ?>
-
                                     <span class="text-[10px] text-slate-400 font-bold uppercase mt-1 block"><?php echo e($book->author); ?></span>
                                 </div>
                             </div>
