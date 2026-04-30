@@ -10,26 +10,32 @@ use Illuminate\Support\Facades\DB;
 
 class PeminjamanController extends Controller
 {
+   
+
     public function index(Request $request)
     {
-        // auto update terlambat
+     
         Peminjaman::where('status', 'dipinjam')
             ->where('tgl_kembali', '<', Carbon::today())
             ->update(['status' => 'terlambat']);
 
+       
         $query = Peminjaman::with(['user', 'book']);
 
-        // search
+     
         if ($request->search) {
             $query->where(function ($q) use ($request) {
-                $q->whereHas('user', fn($u) =>
-                    $u->where('name', 'like', "%{$request->search}%"))
-                ->orWhereHas('book', fn($b) =>
-                    $b->where('title', 'like', "%{$request->search}%"));
+                $q->whereHas('user', function ($u) use ($request) {
+                    $u->where('name', 'like', "%{$request->search}%");
+                })->orWhereHas('book', function ($b) use ($request) {
+                    $b->where('title', 'like', "%{$request->search}%");
+                });
             });
         }
 
-        $loans = $query->latest()->paginate(15)->withQueryString();
+     
+        // $loans = $query->latest()->paginate(15)->withQueryString();
+        $loans = $query->latest()->paginate(3)->withQueryString();
 
         return view('admin.loans.index', compact('loans'));
     }
@@ -47,7 +53,7 @@ class PeminjamanController extends Controller
             DB::transaction(function () use ($request) {
                 // Cek ketersediaan stock sebelum create
                 $book = Book::lockForUpdate()->findOrFail($request->book_id);
-                
+
                 if (!$book->isAvailable()) {
                     throw new \Exception('Stok buku tidak mencukupi!');
                 }
@@ -66,7 +72,6 @@ class PeminjamanController extends Controller
                     'status'          => 'pending',
                 ]);
             });
-
         } catch (\Exception $e) {
             return back()->with('error', $e->getMessage());
         }
@@ -99,13 +104,12 @@ class PeminjamanController extends Controller
 
                 // Kurangi stock setelah status confirmed
                 $book->decrement('stock');
-                
+
                 // Update available stock jika ada field tersebut
                 if ($book->getAttribute('stock_available') !== null) {
                     $book->decrement('stock_available');
                 }
             });
-
         } catch (\Exception $e) {
             return back()->with('error', $e->getMessage());
         }
@@ -129,7 +133,7 @@ class PeminjamanController extends Controller
 
                 // Tambah kembali stock
                 $loan->book->increment('stock');
-                
+
                 // Update available stock jika ada field tersebut
                 if ($loan->book->getAttribute('stock_available') !== null) {
                     $loan->book->increment('stock_available');
@@ -137,7 +141,6 @@ class PeminjamanController extends Controller
 
                 $loan->load(['book', 'user', 'pengembalian']);
             });
-
         } catch (\Exception $e) {
             return back()->with('error', $e->getMessage());
         }

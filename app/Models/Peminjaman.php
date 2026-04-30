@@ -58,25 +58,34 @@ class Peminjaman extends Model
         return in_array($this->status, ['dipinjam', 'terlambat']) && $this->tgl_kembali->isPast();
     }
 
-    public function getDaysOverdue(): int
-    {
-        // 1. Cek jika sudah ada data pengembalian
-        if ($this->pengembalian && $this->pengembalian->tgl_dikembalikan) {
-            // Pastikan tgl_dikembalikan adalah objek Carbon
-            $tglSelesai = Carbon::parse($this->pengembalian->tgl_dikembalikan);
-            
-            if ($tglSelesai > $this->tgl_kembali) {
-                return (int) $tglSelesai->diffInDays($this->tgl_kembali);
-            }
-        }
+  
 
-        // 2. Cek jika masih dipinjam tapi sudah lewat jatuh tempo
-        if ($this->isOverdue() && $this->tgl_kembali) {
-            return (int) Carbon::today()->diffInDays($this->tgl_kembali);
+public function getDaysOverdue(): int
+{
+    // pastikan tgl_kembali adalah Carbon
+    $dueDate = Carbon::parse($this->tgl_kembali);
+
+    // 1. Jika sudah dikembalikan
+    if ($this->pengembalian && $this->pengembalian->tgl_dikembalikan) {
+        $returnedDate = Carbon::parse($this->pengembalian->tgl_dikembalikan);
+
+        // kalau dikembalikan setelah jatuh tempo
+        if ($returnedDate->greaterThan($dueDate)) {
+            return $dueDate->diffInDays($returnedDate);
         }
 
         return 0;
     }
+
+    // 2. Jika belum dikembalikan
+    $today = Carbon::today();
+
+    if ($today->greaterThan($dueDate)) {
+        return $dueDate->diffInDays($today);
+    }
+
+    return 0;
+}
 
     public function calculateFine(): int
     {
